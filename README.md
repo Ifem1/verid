@@ -27,7 +27,7 @@ No fake users, proofs, memberships, transaction hashes, explorer links, contract
 
 `wallet → profile → challenge → publish → register evidence → GenLayer semantic verification → deterministic tier → proof → gate → on-chain membership`
 
-Challenge substring presence alone is insufficient. Validators independently fetch the declared surface and reproduce proof-affecting challenge presence, identity relationship, and first-party authenticity. Evidence excerpts are grounded in fetched content. The contract—not the model—derives UNVERIFIED/BASIC/STRONG/CONFLICTED/EXPIRED/REVOKED.
+Challenge substring presence alone is insufficient. Validators independently fetch the declared surface and reproduce proof-affecting challenge presence, identity relationship, and first-party authenticity. Evidence excerpts are grounded in fetched content. Monotonic challenge IDs bind the Studionet domain, wallet, profile, request ID and expiry. Verification is cycle-bound, proof evidence is capped at 30 days, and STRONG requires GitHub plus a qualifying surface on a different canonical host.
 
 The frontend uses an injected wallet, never auto-connects, tracks account/chain/disconnect events, can add/switch Studionet, blocks wrong-chain writes again before signature, distinguishes explicit FINISHED_WITH_RETURN from explicit failure and unknown finalized execution, and re-reads contract state. Gate-room access is authorized only by a fresh `is_member` read.
 
@@ -39,6 +39,6 @@ npm run check
 npm run contract:check
 ```
 
-If available, also run `genvm-lint check contracts/verid.py`. Deep Direct Mode/adversarial contract audit and deployment-parity verification remain for the final Codex pass.
+Checks include Python compilation, GenVM lint, schema generation, the real `gltest` Direct Mode suite, frontend tests/build and preflight. Current deployment and parity metadata are recorded in `verid-manifest.json`.
 
 See `REVIEW.md` and `docs/`.
