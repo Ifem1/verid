@@ -21,6 +21,7 @@ MAX_EXCERPT = 700
 MIN_CHALLENGE_TTL = 300
 MAX_CHALLENGE_TTL = 7 * 24 * 60 * 60
 MAX_PROOF_TTL = 30 * 24 * 60 * 60
+MAX_EVIDENCE_AGE = 30 * 24 * 60 * 60
 SURFACES = ("GITHUB", "WEBSITE", "PROJECT", "ORGANISATION")
 TIERS = ("UNVERIFIED", "BASIC", "STRONG", "CONFLICTED", "EXPIRED", "REVOKED")
 ZERO = "0x0000000000000000000000000000000000000000"
@@ -129,7 +130,7 @@ class Verid(gl.Contract):
     profile_by_wallet: TreeMap[str, u256]
     proofs: TreeMap[u256, str]
     gates: TreeMap[u256, str]
-    memberships: TreeMap[str, bool]
+    memberships: TreeMap[str, u256]
     next_profile_id: u256
     next_proof_id: u256
     next_gate_id: u256
@@ -152,10 +153,8 @@ class Verid(gl.Contract):
     def _effective_tier(self, p: dict) -> str:
         if p.get("revoked", False):
             return "REVOKED"
-        now = _now()
-        if p.get("proof_expires_at", 0) and now > int(p["proof_expires_at"]):
-            return "EXPIRED"
-        verified = [x for x in p["surfaces"] if x.get("status") == "VERIFIED"]
+        cycle = int(p.get("verification_cycle", 0))
+        verified = [x for x in p["surfaces"] if x.get("status") == "VERIFIED" and int(x.get("verification_cycle", -1)) == cycle]
         conflicted = any(x.get("status") == "CONFLICTED" for x in p["surfaces"])
         if conflicted:
             return "CONFLICTED"
@@ -178,7 +177,7 @@ class Verid(gl.Contract):
             raise gl.vm.UserError("profile label required")
         pid = self.next_profile_id
         self.next_profile_id += 1
-        p = {"id": int(pid), "wallet": wallet, "label": label, "created_at": _now(), "challenge": "", "challenge_expires_at": 0, "surfaces": [], "revoked": False, "latest_proof_id": 0, "proof_expires_at": 0}
+        p = {"id": int(pid), "wallet": wallet, "label": label, "created_at": _now(), "challenge": "", "challenge_expires_at": 0, "verification_cycle": 0, "surfaces": [], "revoked": False, "latest_proof_id": 0, "proof_expires_at": 0}
         self.profiles[pid] = json.dumps(p, separators=(",", ":"))
         self.profile_by_wallet[key] = pid
 
@@ -193,6 +192,11 @@ class Verid(gl.Contract):
         challenge = "verid:" + hashlib.sha256(seed.encode()).hexdigest()[:32]
         p["challenge"] = challenge
         p["challenge_expires_at"] = now + int(ttl_seconds)
+        p["verification_cycle"] = int(p.get("verification_cycle", 0)) + 1
+        for surface in p["surfaces"]:
+            surface["status"] = "PENDING"
+            surface["verified_at"] = 0
+            surface["verification_cycle"] = -1
         self.profiles[profile_id] = json.dumps(p, separators=(",", ":"))
 
     @gl.public.write
@@ -208,7 +212,7 @@ class Verid(gl.Contract):
             raise gl.vm.UserError("surface limit reached")
         if any(x["url"] == url for x in p["surfaces"]):
             raise gl.vm.UserError("surface already registered")
-        p["surfaces"].append({"type": surface_type, "url": url, "status": "PENDING", "verified_at": 0, "identity_relation": "UNRESOLVED", "authenticity": "UNRESOLVED", "excerpt": ""})
+        p["surfaces"].append({"type": surface_type, "url": url, "status": "PENDING", "verified_at": 0, "verification_cycle": -1, "identity_relation": "UNRESOLVED", "authenticity": "UNRESOLVED", "excerpt": ""})
         self.profiles[profile_id] = json.dumps(p, separators=(",", ":"))
 
     def _verify(self, surface_type: str, url: str, challenge: str, wallet: str) -> dict:
@@ -223,8 +227,6 @@ class Verid(gl.Contract):
             for key in ("reachable", "challenge_present", "identity_relation", "authenticity"):
                 if leader.get(key) != own.get(key):
                     return False
-            if leader.get("excerpt") and leader.get("excerpt") != own.get("excerpt"):
-                return False
             return True
         return gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
 
@@ -247,6 +249,7 @@ class Verid(gl.Contract):
         if reachable and present and relation == "MATCH" and authenticity == "FIRST_PARTY":
             s["status"] = "VERIFIED"
             s["verified_at"] = now
+            s["verification_cycle"] = int(p.get("verification_cycle", 0))
         elif relation == "MISMATCH" or authenticity == "NOT_FIRST_PARTY":
             s["status"] = "CONFLICTED"
         else:
@@ -266,11 +269,15 @@ class Verid(gl.Contract):
         if tier not in ("BASIC", "STRONG"):
             raise gl.vm.UserError("profile is not proof-eligible")
         now = _now()
-        verified = [{"type": x["type"], "url": x["url"], "verified_at": x["verified_at"]} for x in p["surfaces"] if x.get("status") == "VERIFIED"]
+        cycle = int(p.get("verification_cycle", 0))
+        verified = [{"type": x["type"], "url": x["url"], "verified_at": x["verified_at"]} for x in p["surfaces"] if x.get("status") == "VERIFIED" and int(x.get("verification_cycle", -1)) == cycle and now - int(x.get("verified_at", 0)) <= MAX_EVIDENCE_AGE]
+        if not verified:
+            raise gl.vm.UserError("surface verification is stale")
         expires = now + int(ttl_seconds)
         proof_id = self.next_proof_id
         self.next_proof_id += 1
-        canonical = json.dumps({"profile_id": int(profile_id), "wallet": p["wallet"].lower(), "tier": tier, "verified_surfaces": verified, "verified_at": now, "expires_at": expires}, sort_keys=True, separators=(",", ":"))
+        evidence_at = min(int(x["verified_at"]) for x in verified)
+        canonical = json.dumps({"profile_id": int(profile_id), "wallet": p["wallet"].lower(), "tier": tier, "verified_surfaces": verified, "verified_at": evidence_at, "issued_at": now, "expires_at": expires, "verification_cycle": cycle}, sort_keys=True, separators=(",", ":"))
         proof_hash = hashlib.sha256(canonical.encode()).hexdigest()
         proof = json.loads(canonical)
         proof.update({"proof_id": int(proof_id), "proof_hash": proof_hash, "status": "ACTIVE"})
@@ -307,6 +314,9 @@ class Verid(gl.Contract):
         now = _now()
         if proof.get("wallet", "").lower() != wallet.lower() or proof.get("status") != "ACTIVE":
             return False
+        profile_raw = self.profiles.get(u256(proof.get("profile_id", 0)))
+        if profile_raw is None or json.loads(profile_raw).get("revoked", False):
+            return False
         if now > int(proof.get("expires_at", 0)) or now - int(proof.get("verified_at", 0)) > int(gate["max_age_seconds"]):
             return False
         rank = {"BASIC": 1, "STRONG": 2}
@@ -323,7 +333,7 @@ class Verid(gl.Contract):
         wallet = str(gl.message.sender_address)
         if not self._eligible(json.loads(gate_raw), json.loads(proof_raw), wallet):
             raise gl.vm.UserError("proof does not satisfy gate")
-        self.memberships[f"{int(gate_id)}:{wallet.lower()}"] = True
+        self.memberships[f"{int(gate_id)}:{wallet.lower()}"] = proof_id
 
     @gl.public.view
     def get_profile(self, profile_id: u256) -> str:
@@ -348,6 +358,9 @@ class Verid(gl.Contract):
         proof = json.loads(raw)
         if _now() > int(proof["expires_at"]):
             proof["status"] = "EXPIRED"
+        profile_raw = self.profiles.get(u256(proof.get("profile_id", 0)))
+        if profile_raw is not None and json.loads(profile_raw).get("revoked", False):
+            proof["status"] = "REVOKED"
         return json.dumps(proof, separators=(",", ":"))
 
     @gl.public.view
@@ -374,4 +387,11 @@ class Verid(gl.Contract):
 
     @gl.public.view
     def is_member(self, gate_id: u256, wallet: Address) -> bool:
-        return bool(self.memberships.get(f"{int(gate_id)}:{str(wallet).lower()}") or False)
+        proof_id = self.memberships.get(f"{int(gate_id)}:{str(wallet).lower()}")
+        if proof_id is None:
+            return False
+        proof_raw = self.proofs.get(proof_id)
+        gate_raw = self.gates.get(gate_id)
+        if proof_raw is None or gate_raw is None:
+            return False
+        return self._eligible(json.loads(gate_raw), json.loads(proof_raw), str(wallet))

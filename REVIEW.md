@@ -1,7 +1,7 @@
 # Verid reviewer guide
 
 1. Confirm exactly one `class Verid(gl.Contract)`.
-2. Confirm Studionet `61999`; reject `61997` / `studio-dev`.
+2. Confirm Studionet `61999` and reject any non-Studionet network.
 3. Run `npm ci && npm run check && npm run contract:check`.
 4. Review `docs/CONSENSUS.md`, `docs/SECURITY.md`, and `docs/CONTRACT_SURFACE.md`.
 5. Verify no fake chain/product state or browser authorization.

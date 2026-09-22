@@ -14,8 +14,8 @@ Verid is **not KYC** and does not collect passports, government ID, biometrics, 
 - Explorer: `https://explorer-studio.genlayer.com`
 - Canonical source: `contracts/verid.py`
 - Contract: exactly one `Verid(gl.Contract)`
-- Deployment: **not yet performed in Stage One**
-- Frontend address: intentionally blank until verified deployment
+- Deployment: recorded in `verid-manifest.json` only after exact-source parity verification
+- Frontend address: must equal the canonical deployed address; blank configuration is invalid for a release
 
 No fake users, proofs, memberships, transaction hashes, explorer links, contract address, simulation mode, mock consensus, or localStorage authorization are used.
 
