@@ -8,7 +8,7 @@ CONTRACT = str(Path(__file__).parents[2] / "contracts" / "verid.py")
 
 
 def deploy(direct_deploy):
-    return direct_deploy(CONTRACT)
+    return direct_deploy(CONTRACT, sdk_version="v0.2.16")
 
 
 def test_profile_ownership_and_label(direct_vm, direct_deploy, direct_alice, direct_bob):
@@ -113,4 +113,3 @@ def test_proof_lineage_and_revocation(direct_vm, direct_deploy, direct_alice):
     assert proof["challenge_id"] == 1
     c.revoke_profile(1)
     assert json.loads(c.get_proof(1))["status"] == "REVOKED"
-
