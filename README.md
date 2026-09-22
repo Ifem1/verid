@@ -41,4 +41,6 @@ npm run contract:check
 
 Checks include Python compilation, GenVM lint, schema generation, the real `gltest` Direct Mode suite, frontend tests/build and preflight. Current deployment and parity metadata are recorded in `verid-manifest.json`.
 
+Current canonical deployment: `0x12f2136e0d372038E72Beb54511c72fF372c694d` on Studionet 61999, deployment transaction `0xd2d9c0b20927fb006cd2b2ad340220140cfaffa59d7dc16d6dee97372546e818`. The exact committed source is 19,691 bytes with SHA-256 `7b1d2087745582eb15ac8acf844a2028d849d5100ef199bcbd6b8a9ad721c0de`; deployed-source parity is exact-byte-match. The documented live semantic attempt honestly remained `UNVERIFIED` with unresolved identity/authenticity, so no proof or gate success is claimed.
+
 See `REVIEW.md` and `docs/`.

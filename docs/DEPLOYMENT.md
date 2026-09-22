@@ -2,9 +2,9 @@
 
 Target only GenLayer Studionet: chain 61999, RPC https://studio.genlayer.com/api, explorer https://explorer-studio.genlayer.com.
 
-The canonical deployment is recorded in `verid-manifest.json` and `config.js`: contract `0xeE4Df291A9e8B4f5b2B90b3F6eeAe578818E0B0B`, transaction `0xf42e4c8876ed300b59cc96ca87e6822b7e622f90eab57564e323d4ce8b7427dd`.
+The canonical deployment is recorded in `verid-manifest.json` and `config.js`: contract `0x12f2136e0d372038E72Beb54511c72fF372c694d`, transaction `0xd2d9c0b20927fb006cd2b2ad340220140cfaffa59d7dc16d6dee97372546e818`.
 
-The frozen contract source is commit `281ff29a2585adeb4d9294bb8b5c678053a9a7b0`, 20,018 bytes, SHA-256 `240abb1f32bb5e65196133792f1b7f9ac5f143912957895adf1b98ccae493246`. `gen_getContractCode` returns base64 source; decoding it produced 20,018 bytes with SHA-256 `240abb1f32bb5e65196133792f1b7f9ac5f143912957895adf1b98ccae493246`: exact-byte parity.
+The frozen contract source is commit `281ff29a2585adeb4d9294bb8b5c678053a9a7b0`, 19,691 bytes, Git blob `e4986586e37a5c1c616a1da5a9a391dc263f13d0`, SHA-256 `7b1d2087745582eb15ac8acf844a2028d849d5100ef199bcbd6b8a9ad721c0de`. `gen_getContractCode` returned base64 source; decoding it produced 19,691 bytes with the same SHA-256 and Git blob: exact-byte parity.
 
 The frontend is deployed at https://verid-sigma.vercel.app and must always use the manifest address. Contract changes require a new frozen commit, source hash, deployment, parity comparison and frontend deployment.
 
