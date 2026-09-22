@@ -10,5 +10,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: npm ci
+      - run: pip install genlayer-test genvm-linter
       - run: npm run check
       - run: npm run contract:check
+      - run: pytest -q tests/direct
+      - run: genvm-lint check contracts/verid.py
+      - run: genvm-lint schema contracts/verid.py --json -o contracts/verid.schema.json
