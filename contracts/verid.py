@@ -53,6 +53,16 @@ def _host(url: str) -> str:
     return text.strip(".")
 
 
+def _authority(url: str) -> str:
+    """Small deterministic authority family normalizer, not a PSL implementation."""
+    host = _host(url)
+    if host.startswith("www."):
+        host = host[4:]
+    if host == "github.com" or host.endswith(".github.com"):
+        return "github.com"
+    return host
+
+
 def _valid_url(url: str) -> bool:
     if not isinstance(url, str) or not (8 < len(url) <= MAX_URL):
         return False
@@ -118,6 +128,8 @@ FETCHED_PAGE_DATA:
             raise ValueError("invalid identity relation")
         if authenticity not in ("FIRST_PARTY", "NOT_FIRST_PARTY", "UNRESOLVED"):
             raise ValueError("invalid authenticity")
+        if relation == "MATCH" and authenticity == "FIRST_PARTY" and not excerpt:
+            raise ValueError("positive semantic result requires grounded excerpt")
         if excerpt and excerpt not in body:
             raise ValueError("excerpt not grounded in fetched page")
         return {"reachable": True, "challenge_present": challenge_present, "identity_relation": relation, "authenticity": authenticity, "excerpt": excerpt}, body
@@ -162,8 +174,8 @@ class Verid(gl.Contract):
         conflicted = any(x.get("status") == "CONFLICTED" for x in p["surfaces"])
         if conflicted:
             return "CONFLICTED"
-        github_authorities = {x.get("authority", _host(x.get("url", ""))) for x in verified if x["type"] == "GITHUB"}
-        independent = [x for x in verified if x["type"] in ("WEBSITE", "PROJECT", "ORGANISATION") and x.get("authority", _host(x.get("url", ""))) not in github_authorities]
+        github_authorities = {_authority(x.get("url", "")) for x in verified if x["type"] == "GITHUB"}
+        independent = [x for x in verified if x["type"] in ("WEBSITE", "PROJECT", "ORGANISATION") and _authority(x.get("url", "")) not in github_authorities]
         if any(x["type"] == "GITHUB" for x in verified) and independent:
             return "STRONG"
         if len(verified) >= 1:
@@ -221,7 +233,7 @@ class Verid(gl.Contract):
             raise gl.vm.UserError("surface limit reached")
         if any(x["url"] == url for x in p["surfaces"]):
             raise gl.vm.UserError("surface already registered")
-        p["surfaces"].append({"type": surface_type, "url": url, "authority": _host(url), "status": "PENDING", "verified_at": 0, "verification_cycle": -1, "identity_relation": "UNRESOLVED", "authenticity": "UNRESOLVED", "excerpt": ""})
+        p["surfaces"].append({"type": surface_type, "url": url, "authority": _authority(url), "status": "PENDING", "verified_at": 0, "verification_cycle": -1, "identity_relation": "UNRESOLVED", "authenticity": "UNRESOLVED", "excerpt": ""})
         self.profiles[profile_id] = json.dumps(p, separators=(",", ":"))
 
     def _verify(self, surface_type: str, url: str, challenge: str, wallet: str) -> dict:
@@ -236,6 +248,8 @@ class Verid(gl.Contract):
             for key in ("reachable", "challenge_present", "identity_relation", "authenticity"):
                 if leader.get(key) != own.get(key):
                     return False
+            if leader.get("identity_relation") == "MATCH" and leader.get("authenticity") == "FIRST_PARTY" and not leader.get("excerpt"):
+                return False
             if leader.get("excerpt") and leader.get("excerpt") not in own_body:
                 return False
             return True
@@ -281,7 +295,7 @@ class Verid(gl.Contract):
             raise gl.vm.UserError("profile is not proof-eligible")
         now = _now()
         cycle = int(p.get("verification_cycle", 0))
-        verified = [{"type": x["type"], "url": x["url"], "authority": x.get("authority", _host(x["url"])), "verified_at": x["verified_at"]} for x in p["surfaces"] if x.get("status") == "VERIFIED" and int(x.get("verification_cycle", -1)) == cycle and now - int(x.get("verified_at", 0)) <= MAX_EVIDENCE_AGE]
+        verified = [{"type": x["type"], "url": x["url"], "authority": x.get("authority", _authority(x["url"])), "verified_at": x["verified_at"]} for x in p["surfaces"] if x.get("status") == "VERIFIED" and int(x.get("verification_cycle", -1)) == cycle and now - int(x.get("verified_at", 0)) <= MAX_EVIDENCE_AGE]
         if not verified:
             raise gl.vm.UserError("surface verification is stale")
         expires = now + int(ttl_seconds)
