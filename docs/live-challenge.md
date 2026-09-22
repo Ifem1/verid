@@ -1,5 +1,5 @@
-# Verid Live Demo
+# Official Verid identity surface
 
-Wallet-controlled public identity surface.
+This is the official public challenge surface for the GitHub account and repository owned by Ifem1.
 
-Challenge: verid:9cf3251fa30d3eea892f0a986f4062bc
+Challenge: verid:3eb15d514699c5cb91c596edb7c8c47c
