@@ -1,0 +1,1 @@
+{"project":"Verid","network":"GenLayer Studionet","chain_id":61999,"rpc":"https://studio.genlayer.com/api","explorer":"https://explorer-studio.genlayer.com","contract_path":"contracts/verid.py","contract_class":"Verid","contract_address":null,"deployment_tx":null,"deployment_status":"not_deployed"}

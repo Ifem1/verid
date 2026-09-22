@@ -1,0 +1,1 @@
+import fs from'node:fs';const x=['src/app.js','src/protocol.js','contracts/verid.py'].map(f=>fs.readFileSync(f,'utf8')).join('\n');if(/localStorage|61997|studio-dev/.test(x)){console.error('Forbidden production pattern');process.exit(1)}console.log('Static lint passed.');
