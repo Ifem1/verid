@@ -22,7 +22,7 @@ MIN_CHALLENGE_TTL = 300
 MAX_CHALLENGE_TTL = 7 * 24 * 60 * 60
 MAX_PROOF_TTL = 30 * 24 * 60 * 60
 MAX_EVIDENCE_AGE = 30 * 24 * 60 * 60
-SURFACES = ("GITHUB", "WEBSITE", "PROJECT", "ORGANISATION")
+SURFACES = ("GITHUB", "WEBSITE", "PROJECT", "ORGANISATION", "X")
 TIERS = ("UNVERIFIED", "BASIC", "STRONG", "CONFLICTED", "EXPIRED", "REVOKED")
 ZERO = "0x0000000000000000000000000000000000000000"
 
@@ -65,6 +65,21 @@ def _authority(url: str) -> str:
     return host
 
 
+def _github_username(url: str) -> str:
+    """Return a canonical GitHub username, or an empty string for non-profile URLs."""
+    text = str(url).strip()
+    if not text.startswith("https://github.com/"):
+        return ""
+    tail = text[len("https://github.com/"):]
+    if not tail or "/" in tail or "?" in tail or "#" in tail:
+        return ""
+    if any(ch.isspace() for ch in tail) or len(tail) > 39:
+        return ""
+    if not all(ch.isalnum() or ch in "-" for ch in tail):
+        return ""
+    return tail
+
+
 def _valid_url(url: str) -> bool:
     if not isinstance(url, str) or not (8 < len(url) <= MAX_URL):
         return False
@@ -83,6 +98,39 @@ def _valid_url(url: str) -> bool:
     if len(parts) > 1 and parts[0] == "172" and parts[1].isdigit() and 16 <= int(parts[1]) <= 31:
         return False
     return True
+
+
+def _github_evidence(url: str, challenge: str) -> dict:
+    """Verify a GitHub profile using canonical public JSON, not semantic inference."""
+    username = _github_username(url)
+    if not username:
+        return {"reachable": False, "canonical_login_match": False,
+                "canonical_profile_match": False, "challenge_present": False,
+                "canonical_github_id": "", "identity_relation": "MISMATCH",
+                "authenticity": "NOT_FIRST_PARTY", "excerpt": ""}
+    source = "https://api.github.com/users/" + username
+    try:
+        raw = str(gl.nondet.web.render(source, mode="text"))
+        data = _parse_json(raw)
+        login = _clean(data.get("login", ""), 100)
+        github_id = _clean(data.get("id", ""), 100)
+        html_url = _clean(data.get("html_url", ""), MAX_URL).rstrip("/")
+        bio = str(data.get("bio", ""))
+        login_match = login.lower() == username.lower()
+        profile_match = html_url.lower() == ("https://github.com/" + username).lower()
+        present = challenge in bio
+        positive = bool(login_match and profile_match and present and github_id)
+        return {"reachable": True, "canonical_login_match": login_match,
+                "canonical_profile_match": profile_match, "challenge_present": present,
+                "canonical_github_id": github_id,
+                "identity_relation": "MATCH" if positive else ("MISMATCH" if not login_match or not profile_match else "UNRESOLVED"),
+                "authenticity": "FIRST_PARTY" if positive else ("NOT_FIRST_PARTY" if not login_match or not profile_match else "UNRESOLVED"),
+                "excerpt": bio[:MAX_EXCERPT] if present else ""}
+    except Exception:
+        return {"reachable": False, "canonical_login_match": False,
+                "canonical_profile_match": False, "challenge_present": False,
+                "canonical_github_id": "", "identity_relation": "UNRESOLVED",
+                "authenticity": "UNRESOLVED", "excerpt": ""}
 
 
 def _parse_json(raw: typing.Any) -> dict:
@@ -180,7 +228,7 @@ class Verid(gl.Contract):
         if conflicted:
             return "CONFLICTED"
         github_authorities = {x.get("authority", _authority(x.get("url", ""))) for x in evidence if x["type"] == "GITHUB"}
-        independent = [x for x in evidence if x["type"] in ("WEBSITE", "PROJECT", "ORGANISATION") and x.get("authority", _authority(x.get("url", ""))) not in github_authorities]
+        independent = [x for x in evidence if x["type"] in ("WEBSITE", "PROJECT", "ORGANISATION", "X") and x.get("authority", _authority(x.get("url", ""))) not in github_authorities]
         if any(x["type"] == "GITHUB" for x in evidence) and independent:
             return "STRONG"
         if len(evidence) >= 1:
@@ -239,6 +287,8 @@ class Verid(gl.Contract):
             raise gl.vm.UserError("unsupported public surface")
         if not _valid_url(url):
             raise gl.vm.UserError("public surface must be a safe https URL")
+        if surface_type == "GITHUB" and not _github_username(url):
+            raise gl.vm.UserError("GitHub surface must be https://github.com/<username>")
         if len(p["surfaces"]) >= 8:
             raise gl.vm.UserError("surface limit reached")
         if any(x["url"] == url for x in p["surfaces"]):
@@ -247,6 +297,17 @@ class Verid(gl.Contract):
         self.profiles[profile_id] = json.dumps(p, separators=(",", ":"))
 
     def _verify(self, surface_type: str, url: str, challenge: str, wallet: str) -> dict:
+        if surface_type == "GITHUB":
+            leader = _github_evidence(url, challenge)
+            def validator_fn(leader_result) -> bool:
+                if not isinstance(leader_result, gl.vm.Return) or not isinstance(leader_result.calldata, dict):
+                    return False
+                own = _github_evidence(url, challenge)
+                fields = ("reachable", "canonical_login_match", "canonical_profile_match",
+                          "challenge_present", "canonical_github_id", "identity_relation",
+                          "authenticity")
+                return all(leader_result.calldata.get(k) == own.get(k) for k in fields)
+            return gl.vm.run_nondet_unsafe(lambda: leader, validator_fn)
         def leader_fn() -> dict:
             return _semantic_once(surface_type, url, challenge, wallet)
         def validator_fn(leader_result) -> bool:
