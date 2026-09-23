@@ -273,3 +273,36 @@ def test_validator_material_or_excerpt_disagreement_fails(direct_vm, direct_depl
     direct_vm.mock_llm(".*", json.dumps(bad))
     c.verify_surface(1, 0)
     assert json.loads(c.get_profile(1))["surfaces"][0]["status"] != "VERIFIED"
+
+
+def test_proof_tier_is_rederivable_from_stored_evidence(direct_vm, direct_deploy, direct_alice):
+    c = deploy(direct_deploy)
+    profile, _ = _strong_setup(c, direct_vm, direct_alice)
+    proof = json.loads(c.get_proof(1))
+    assert proof["tier"] == "STRONG"
+    assert {x["type"] for x in proof["verified_surfaces"]} == {"GITHUB", "WEBSITE"}
+    assert proof["tier"] == "STRONG" if {x["type"] for x in proof["verified_surfaces"]} == {"GITHUB", "WEBSITE"} else False
+
+
+@pytest.mark.parametrize("url", [
+    "https://alice.github.io/proof",
+    "https://raw.githubusercontent.com/alice/project/main/proof.html",
+])
+def test_github_control_plane_does_not_count_as_independent(direct_vm, direct_deploy, direct_alice, url):
+    c = deploy(direct_deploy)
+    direct_vm.sender = direct_alice
+    c.create_profile("Alice")
+    c.issue_challenge(1, 600)
+    challenge = json.loads(c.get_profile(1))["challenge"]
+    c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+    c.register_surface(1, "WEBSITE", url)
+    direct_vm.mock_web("github.com", {"status": 200, "body": challenge})
+    direct_vm.mock_web("github.io", {"status": 200, "body": challenge})
+    direct_vm.mock_web("raw.githubusercontent.com", {"status": 200, "body": challenge})
+    direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
+    c.verify_surface(1, 0)
+    c.verify_surface(1, 1)
+    p = json.loads(c.get_profile(1))
+    assert p["surfaces"][0]["authority"] == "github"
+    assert p["surfaces"][1]["authority"] == "github"
+    assert p["tier"] == "BASIC"

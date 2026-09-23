@@ -58,8 +58,10 @@ def _authority(url: str) -> str:
     host = _host(url)
     if host.startswith("www."):
         host = host[4:]
-    if host == "github.com" or host.endswith(".github.com"):
-        return "github.com"
+    if (host == "github.com" or host.endswith(".github.com") or
+            host == "github.io" or host.endswith(".github.io") or
+            host == "githubusercontent.com" or host.endswith(".githubusercontent.com")):
+        return "github"
     return host
 
 
@@ -166,21 +168,29 @@ class Verid(gl.Contract):
         if str(gl.message.sender_address).lower() != p["wallet"].lower():
             raise gl.vm.UserError("profile owner only")
 
-    def _effective_tier(self, p: dict) -> str:
-        if p.get("revoked", False):
-            return "REVOKED"
+    def _fresh_verified_evidence(self, p: dict, now: int) -> list:
         cycle = int(p.get("verification_cycle", 0))
-        verified = [x for x in p["surfaces"] if x.get("status") == "VERIFIED" and int(x.get("verification_cycle", -1)) == cycle]
+        return [{"type": x["type"], "url": x["url"], "authority": x.get("authority", _authority(x["url"])), "verified_at": int(x["verified_at"])}
+                for x in p["surfaces"]
+                if x.get("status") == "VERIFIED" and int(x.get("verification_cycle", -1)) == cycle
+                and int(x.get("verified_at", 0)) > 0 and now - int(x.get("verified_at", 0)) <= MAX_EVIDENCE_AGE]
+
+    def _tier_from_evidence(self, p: dict, evidence: list) -> str:
         conflicted = any(x.get("status") == "CONFLICTED" for x in p["surfaces"])
         if conflicted:
             return "CONFLICTED"
-        github_authorities = {_authority(x.get("url", "")) for x in verified if x["type"] == "GITHUB"}
-        independent = [x for x in verified if x["type"] in ("WEBSITE", "PROJECT", "ORGANISATION") and _authority(x.get("url", "")) not in github_authorities]
-        if any(x["type"] == "GITHUB" for x in verified) and independent:
+        github_authorities = {x.get("authority", _authority(x.get("url", ""))) for x in evidence if x["type"] == "GITHUB"}
+        independent = [x for x in evidence if x["type"] in ("WEBSITE", "PROJECT", "ORGANISATION") and x.get("authority", _authority(x.get("url", ""))) not in github_authorities]
+        if any(x["type"] == "GITHUB" for x in evidence) and independent:
             return "STRONG"
-        if len(verified) >= 1:
+        if len(evidence) >= 1:
             return "BASIC"
         return "UNVERIFIED"
+
+    def _effective_tier(self, p: dict) -> str:
+        if p.get("revoked", False):
+            return "REVOKED"
+        return self._tier_from_evidence(p, self._fresh_verified_evidence(p, _now()))
 
     @gl.public.write
     def create_profile(self, label: str) -> None:
@@ -290,12 +300,12 @@ class Verid(gl.Contract):
         self._require_owner(p)
         if ttl_seconds < MIN_CHALLENGE_TTL or ttl_seconds > MAX_PROOF_TTL:
             raise gl.vm.UserError("proof ttl out of range")
-        tier = self._effective_tier(p)
-        if tier not in ("BASIC", "STRONG"):
-            raise gl.vm.UserError("profile is not proof-eligible")
         now = _now()
         cycle = int(p.get("verification_cycle", 0))
-        verified = [{"type": x["type"], "url": x["url"], "authority": x.get("authority", _authority(x["url"])), "verified_at": x["verified_at"]} for x in p["surfaces"] if x.get("status") == "VERIFIED" and int(x.get("verification_cycle", -1)) == cycle and now - int(x.get("verified_at", 0)) <= MAX_EVIDENCE_AGE]
+        verified = self._fresh_verified_evidence(p, now)
+        tier = self._tier_from_evidence(p, verified)
+        if tier not in ("BASIC", "STRONG"):
+            raise gl.vm.UserError("profile is not proof-eligible")
         if not verified:
             raise gl.vm.UserError("surface verification is stale")
         expires = now + int(ttl_seconds)
