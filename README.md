@@ -41,6 +41,6 @@ npm run contract:check
 
 Checks include Python compilation, GenVM lint, schema generation, the real `gltest` Direct Mode suite, frontend tests/build and preflight. Current deployment and parity metadata are recorded in `verid-manifest.json`.
 
-The configured Studionet contract is `0xD4d621bBD288496cab9f7f5Ec23C579816D84EB3`, transaction `0x579901dc9706ec0d13c88b55224309ee191107b4bbfb7cb5140dbfae3bdb6f65`. It is accepted but not verified finalized, and deployed-source parity is not proven. The previous `0x4A430f7326DEdcd796df149Ce5d31223c5943d92` is a superseded historical deployment. Do not treat this release as production-ready until corrected source is deployed after green checks and exact byte parity is established.
+The canonical Studionet contract is `0x5fDd2fC78Ddc1D904662B2D8A7174C17f85B5076`, transaction `0xc4ba82645f79eb0fe43641e15762671f3c54858c70ad666d079ce2f10c9fc333`. It is finalized and exact deployed-source byte parity is verified. The previous `0xD4d621bBD288496cab9f7f5Ec23C579816D84EB3` and `0x4A430f7326DEdcd796df149Ce5d31223c5943d92` are superseded historical deployments. The production website deploy and complete live browser walkthrough remain pending; do not claim full production readiness until they pass.
 
 See `REVIEW.md` and `docs/`.
