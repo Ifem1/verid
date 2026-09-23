@@ -12,6 +12,94 @@ def deploy(direct_deploy):
     return direct_deploy(CONTRACT, sdk_version="v0.2.16")
 
 
+def mock_github(vm, challenge, login="alice", github_id=123, html_url=None, bio=None):
+    body = {"login": login, "id": github_id,
+            "html_url": html_url or f"https://github.com/{login}",
+            "bio": bio if bio is not None else f"VERID {challenge}"}
+    vm.mock_web(r"https://api\.github\.com/users/", {"status": 200, "body": json.dumps(body)})
+
+
+def github_setup(vm, deploy_fn, alice, *, login="alice"):
+    c = deploy(deploy_fn)
+    vm.sender = alice
+    c.create_profile("Alice")
+    c.issue_challenge(1, 600)
+    challenge = json.loads(c.get_profile(1))["challenge"]
+    c.register_surface(1, "GITHUB", f"https://github.com/{login}")
+    return c, challenge
+
+
+@pytest.mark.parametrize("url", [
+    "https://github.com/alice/repo", "https://github.com/alice?tab=repositories",
+    "https://github.com/", "http://github.com/alice", "https://github.com/alice/",
+])
+def test_github_identity_rejects_noncanonical_urls(direct_vm, direct_deploy, direct_alice, url):
+    c = deploy(direct_deploy)
+    direct_vm.sender = direct_alice
+    c.create_profile("Alice")
+    c.issue_challenge(1, 600)
+    with direct_vm.expect_revert("safe https URL" if url.startswith("http://") else "GitHub surface"):
+        c.register_surface(1, "GITHUB", url)
+
+
+@pytest.mark.parametrize("payload,expected", [
+    ({"login": "alice", "id": 123, "html_url": "https://github.com/alice", "bio": "proof {challenge}"}, "VERIFIED"),
+    ({"login": "other", "id": 123, "html_url": "https://github.com/other", "bio": "proof {challenge}"}, "CONFLICTED"),
+    ({"login": "alice", "id": 123, "html_url": "https://github.com/other", "bio": "proof {challenge}"}, "CONFLICTED"),
+    ({"login": "alice", "id": None, "html_url": "https://github.com/alice", "bio": "proof {challenge}"}, "UNVERIFIED"),
+    ({"login": "alice", "id": 123, "html_url": "https://github.com/alice", "bio": "no challenge"}, "UNVERIFIED"),
+    ({"login": "alice", "id": 123, "html_url": "https://github.com/alice", "bio": ""}, "UNVERIFIED"),
+])
+def test_github_canonical_json_material_facts(direct_vm, direct_deploy, direct_alice, payload, expected):
+    c, challenge = github_setup(direct_vm, direct_deploy, direct_alice)
+    data = {k: (v.format(challenge=challenge) if isinstance(v, str) else v) for k, v in payload.items()}
+    direct_vm.mock_web(r"https://api\.github\.com/users/", {"status": 200, "body": json.dumps(data)})
+    c.verify_surface(1, 0)
+    surface = json.loads(c.get_profile(1))["surfaces"][0]
+    assert surface["status"] == expected
+    if expected == "VERIFIED":
+        assert surface["canonical_login"] == "alice"
+        assert surface["canonical_github_id"] == "123"
+        assert surface["identity_relation"] == "MATCH"
+        assert surface["authenticity"] == "FIRST_PARTY"
+
+
+@pytest.mark.parametrize("body", ["not-json", "{}", "null"])
+def test_github_unavailable_or_malformed_response_is_nonpositive(direct_vm, direct_deploy, direct_alice, body):
+    c, _ = github_setup(direct_vm, direct_deploy, direct_alice)
+    direct_vm.mock_web(r"https://api\.github\.com/users/", {"status": 200, "body": body})
+    c.verify_surface(1, 0)
+    assert json.loads(c.get_profile(1))["surfaces"][0]["status"] != "VERIFIED"
+
+
+def test_github_validator_rejects_leader_lies_and_independent_source_disagreement(direct_vm, direct_deploy, direct_alice):
+    c, challenge = github_setup(direct_vm, direct_deploy, direct_alice)
+    mock_github(direct_vm, challenge)
+    c.verify_surface(1, 0)
+    good = {"reachable": True, "canonical_login_match": True, "canonical_profile_match": True,
+            "challenge_present": True, "canonical_login": "alice", "canonical_profile_url": "https://github.com/alice",
+            "canonical_github_id": "123", "canonical_bio": f"VERID {challenge}",
+            "identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": f"VERID {challenge}"}
+    for field, lie in (("canonical_login", "mallory"), ("challenge_present", False), ("canonical_github_id", "999")):
+        forged = dict(good)
+        forged[field] = lie
+        assert direct_vm.run_validator(leader_result=forged) is False
+    direct_vm.clear_mocks()
+    mock_github(direct_vm, challenge, login="mallory", html_url="https://github.com/mallory")
+    assert direct_vm.run_validator() is False
+
+
+def test_github_verification_is_invalidated_by_fresh_challenge(direct_vm, direct_deploy, direct_alice):
+    c, challenge = github_setup(direct_vm, direct_deploy, direct_alice)
+    mock_github(direct_vm, challenge)
+    c.verify_surface(1, 0)
+    assert json.loads(c.get_profile(1))["surfaces"][0]["status"] == "VERIFIED"
+    c.issue_challenge(1, 600)
+    surface = json.loads(c.get_profile(1))["surfaces"][0]
+    assert surface["status"] == "PENDING"
+    assert surface["verification_cycle"] == -1
+
+
 def test_profile_ownership_and_label(direct_vm, direct_deploy, direct_alice, direct_bob):
     c = deploy(direct_deploy)
     direct_vm.sender = direct_alice
@@ -50,9 +138,9 @@ def test_surface_registration_validation(direct_vm, direct_deploy, direct_alice)
     with direct_vm.expect_revert("safe https URL"):
         c.register_surface(1, "GITHUB", "http://example.com/a")
     c.issue_challenge(1, 600)
-    c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+    c.register_surface(1, "GITHUB", "https://github.com/alice")
     with direct_vm.expect_revert("surface already registered"):
-        c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+        c.register_surface(1, "GITHUB", "https://github.com/alice")
 
 
 def test_basic_verification_and_fresh_cycle_invalidation(direct_vm, direct_deploy, direct_alice):
@@ -89,9 +177,9 @@ def test_independent_authority_required_for_strong(direct_vm, direct_deploy, dir
     c.issue_challenge(1, 600)
     p = json.loads(c.get_profile(1))
     challenge = p["challenge"]
-    c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+    c.register_surface(1, "GITHUB", "https://github.com/alice")
     c.register_surface(1, "PROJECT", "https://github.com/alice/verid-project")
-    direct_vm.mock_web("github.com", {"status": 200, "body": "official " + challenge})
+    mock_github(direct_vm, challenge)
     direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
     c.verify_surface(1, 0)
     c.verify_surface(1, 1)
@@ -108,9 +196,9 @@ def test_github_authority_family_cannot_inflate_strong(direct_vm, direct_deploy,
     c.create_profile("Alice")
     c.issue_challenge(1, 600)
     challenge = json.loads(c.get_profile(1))["challenge"]
-    c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+    c.register_surface(1, "GITHUB", "https://github.com/alice")
     c.register_surface(1, "PROJECT", second_url)
-    direct_vm.mock_web("github.com", {"status": 200, "body": challenge})
+    mock_github(direct_vm, challenge)
     direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
     c.verify_surface(1, 0)
     c.verify_surface(1, 1)
@@ -123,9 +211,9 @@ def test_independent_example_authority_can_be_strong(direct_vm, direct_deploy, d
     c.create_profile("Alice")
     c.issue_challenge(1, 600)
     challenge = json.loads(c.get_profile(1))["challenge"]
-    c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+    c.register_surface(1, "GITHUB", "https://github.com/alice")
     c.register_surface(1, "WEBSITE", "https://example.com/alice")
-    direct_vm.mock_web("github.com", {"status": 200, "body": challenge})
+    mock_github(direct_vm, challenge)
     direct_vm.mock_web("example.com", {"status": 200, "body": challenge})
     direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
     c.verify_surface(1, 0)
@@ -169,9 +257,9 @@ def _strong_setup(c, vm, alice):
     c.create_profile("Alice")
     c.issue_challenge(1, 600)
     challenge = json.loads(c.get_profile(1))["challenge"]
-    c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+    c.register_surface(1, "GITHUB", "https://github.com/alice")
     c.register_surface(1, "WEBSITE", "https://example.com/alice")
-    vm.mock_web("github.com", {"status": 200, "body": challenge})
+    mock_github(vm, challenge)
     vm.mock_web("example.com", {"status": 200, "body": challenge})
     vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
     c.verify_surface(1, 0)
@@ -241,9 +329,9 @@ def test_fresh_replacement_proof_restores_eligibility(direct_vm, direct_deploy, 
     direct_vm.clear_mocks()
     p = json.loads(c.get_profile(1))
     challenge = p["challenge"]
-    c.register_surface(1, "GITHUB", "https://github.com/alice/verid-refresh")
+    c.register_surface(1, "GITHUB", "https://github.com/alice-refresh")
     c.register_surface(1, "WEBSITE", "https://example.com/alice-refresh")
-    direct_vm.mock_web("github.com/alice/verid-refresh", {"status": 200, "body": challenge})
+    mock_github(direct_vm, challenge, login="alice-refresh")
     direct_vm.mock_web("example.com/alice-refresh", {"status": 200, "body": challenge})
     direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
     c.verify_surface(1, 2)
@@ -294,9 +382,9 @@ def test_github_control_plane_does_not_count_as_independent(direct_vm, direct_de
     c.create_profile("Alice")
     c.issue_challenge(1, 600)
     challenge = json.loads(c.get_profile(1))["challenge"]
-    c.register_surface(1, "GITHUB", "https://github.com/alice/verid")
+    c.register_surface(1, "GITHUB", "https://github.com/alice")
     c.register_surface(1, "WEBSITE", url)
-    direct_vm.mock_web("github.com", {"status": 200, "body": challenge})
+    mock_github(direct_vm, challenge)
     direct_vm.mock_web("github.io", {"status": 200, "body": challenge})
     direct_vm.mock_web("raw.githubusercontent.com", {"status": 200, "body": challenge})
     direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
@@ -314,11 +402,10 @@ def test_staggered_evidence_age_cannot_elevate_omitted_stale_surface(direct_vm, 
     c.create_profile("Alice")
     c.issue_challenge(1, 7 * 24 * 60 * 60)
     challenge = json.loads(c.get_profile(1))["challenge"]
-    c.register_surface(1, "GITHUB", "https://github.com/alice/staggered")
+    c.register_surface(1, "GITHUB", "https://github.com/alice-staggered")
     c.register_surface(1, "WEBSITE", "https://alice.example.com/staggered")
 
-    direct_vm.mock_web("github.com/alice/staggered", {"status": 200, "body": "Official GitHub " + challenge})
-    direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
+    mock_github(direct_vm, challenge, login="alice-staggered")
     c.verify_surface(1, 0)
 
     _warp_after(direct_vm, 6 * 24 * 60 * 60)

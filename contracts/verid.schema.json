@@ -1,0 +1,240 @@
+{
+  "ctor": {
+    "params": [],
+    "kwparams": {}
+  },
+  "methods": {
+    "create_gate": {
+      "params": [
+        [
+          "name",
+          "string"
+        ],
+        [
+          "min_tier",
+          "string"
+        ],
+        [
+          "required_surface_a",
+          "string"
+        ],
+        [
+          "required_surface_b",
+          "string"
+        ],
+        [
+          "max_age_seconds",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    },
+    "create_profile": {
+      "params": [
+        [
+          "label",
+          "string"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    },
+    "get_gate": {
+      "params": [
+        [
+          "gate_id",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "string"
+    },
+    "get_gate_count": {
+      "params": [],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "int"
+    },
+    "get_profile": {
+      "params": [
+        [
+          "profile_id",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "string"
+    },
+    "get_profile_count": {
+      "params": [],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "int"
+    },
+    "get_profile_for_wallet": {
+      "params": [
+        [
+          "wallet",
+          "address"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "int"
+    },
+    "get_proof": {
+      "params": [
+        [
+          "proof_id",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "string"
+    },
+    "get_proof_count": {
+      "params": [],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "int"
+    },
+    "is_eligible": {
+      "params": [
+        [
+          "gate_id",
+          "int"
+        ],
+        [
+          "proof_id",
+          "int"
+        ],
+        [
+          "wallet",
+          "address"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "bool"
+    },
+    "is_member": {
+      "params": [
+        [
+          "gate_id",
+          "int"
+        ],
+        [
+          "wallet",
+          "address"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": true,
+      "ret": "bool"
+    },
+    "issue_challenge": {
+      "params": [
+        [
+          "profile_id",
+          "int"
+        ],
+        [
+          "ttl_seconds",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    },
+    "issue_proof": {
+      "params": [
+        [
+          "profile_id",
+          "int"
+        ],
+        [
+          "ttl_seconds",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    },
+    "join_gate": {
+      "params": [
+        [
+          "gate_id",
+          "int"
+        ],
+        [
+          "proof_id",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    },
+    "register_surface": {
+      "params": [
+        [
+          "profile_id",
+          "int"
+        ],
+        [
+          "surface_type",
+          "string"
+        ],
+        [
+          "url",
+          "string"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    },
+    "revoke_profile": {
+      "params": [
+        [
+          "profile_id",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    },
+    "verify_surface": {
+      "params": [
+        [
+          "profile_id",
+          "int"
+        ],
+        [
+          "surface_index",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "readonly": false,
+      "ret": "null",
+      "payable": false
+    }
+  }
+}

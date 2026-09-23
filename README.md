@@ -14,7 +14,7 @@ Verid is **not KYC** and does not collect passports, government ID, biometrics, 
 - Explorer: `https://explorer-studio.genlayer.com`
 - Canonical source: `contracts/verid.py`
 - Contract: exactly one `Verid(gl.Contract)`
-- Deployment: recorded in `verid-manifest.json` only after exact-source parity verification
+- Deployment: current address and its finality/parity status are recorded in `verid-manifest.json`
 - Frontend address: must equal the canonical deployed address; blank configuration is invalid for a release
 
 No fake users, proofs, memberships, transaction hashes, explorer links, contract address, simulation mode, mock consensus, or localStorage authorization are used.
@@ -29,7 +29,7 @@ No fake users, proofs, memberships, transaction hashes, explorer links, contract
 
 Challenge substring presence alone is insufficient. Validators independently fetch the declared surface and reproduce proof-affecting challenge presence, identity relationship, and first-party authenticity. Evidence excerpts are grounded in fetched content. Monotonic challenge IDs bind the Studionet domain, wallet, profile, request ID and expiry. Verification is cycle-bound, proof evidence is capped at 30 days, and STRONG requires GitHub plus a qualifying surface on a different canonical host.
 
-The frontend uses an injected wallet, never auto-connects, tracks account/chain/disconnect events, can add/switch Studionet, blocks wrong-chain writes again before signature, distinguishes explicit FINISHED_WITH_RETURN from explicit failure and unknown finalized execution, and re-reads contract state. Gate-room access is authorized only by a fresh `is_member` read.
+The frontend uses an injected wallet and silently restores an already-authorized account through `eth_accounts`; only an explicit Connect action requests wallet permission. It tracks account, chain, and disconnect events, can add or switch Studionet, and gates room access on a fresh `is_member` read. GitHub identity claims use canonical public GitHub user JSON and deterministic login, profile URL, ID, and bio checks. Other supported public surfaces use GenLayer semantic consensus.
 
 ## Checks
 
@@ -41,6 +41,6 @@ npm run contract:check
 
 Checks include Python compilation, GenVM lint, schema generation, the real `gltest` Direct Mode suite, frontend tests/build and preflight. Current deployment and parity metadata are recorded in `verid-manifest.json`.
 
-Current canonical deployment: `0x4A430f7326DEdcd796df149Ce5d31223c5943d92` on Studionet 61999, deployment transaction `0x3ea54a4abee79a9da8a3c973c04779ad5912572c72ec67ff6c2124e34d09d479`. The exact committed source is 20,134 bytes with SHA-256 `caca027a0253142bee2f5793a508c76b645907b61815ca9c626345caf22184c4`; deployed-source parity is exact-byte-match. The documented live semantic attempt honestly remained `UNVERIFIED` with unresolved identity/authenticity, so no proof or gate success is claimed.
+The configured Studionet contract is `0xD4d621bBD288496cab9f7f5Ec23C579816D84EB3`, transaction `0x579901dc9706ec0d13c88b55224309ee191107b4bbfb7cb5140dbfae3bdb6f65`. It is accepted but not verified finalized, and deployed-source parity is not proven. The previous `0x4A430f7326DEdcd796df149Ce5d31223c5943d92` is a superseded historical deployment. Do not treat this release as production-ready until corrected source is deployed after green checks and exact byte parity is established.
 
 See `REVIEW.md` and `docs/`.

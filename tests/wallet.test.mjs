@@ -1,4 +1,4 @@
-import test from'node:test';import assert from'node:assert/strict';import{walletButtonText,connectLocalWallet,clearLocalWallet,toggleWalletMenu,copyFullWalletAddress}from'../src/wallet-session.js';
+import test from'node:test';import assert from'node:assert/strict';import{walletButtonText,connectLocalWallet,clearLocalWallet,restoreLocalWallet,toggleWalletMenu,copyFullWalletAddress}from'../src/wallet-session.js';
 const short=v=>v&&v.length>12?`${v.slice(0,6)}…${v.slice(-4)}`:v,ADDRESS='0x6EAE29000000000000000000000000000039C822';
 test('disconnected state shows Connect wallet',()=>assert.equal(walletButtonText('',short),'Connect wallet'));
 test('connected state shows shortened wallet',()=>assert.equal(walletButtonText(ADDRESS,short),'0x6EAE…C822'));
@@ -6,3 +6,5 @@ test('wallet menu toggles for click and touch activation',()=>{assert.equal(togg
 test('copy uses the full connected wallet address',async()=>{let copied='';await copyFullWalletAddress(ADDRESS,{writeText:async value=>{copied=value}});assert.equal(copied,ADDRESS)});
 test('local disconnect clears only the app wallet session',()=>{const s={wallet:ADDRESS,chain:61999,sessionActive:true};clearLocalWallet(s);assert.deepEqual(s,{wallet:'',chain:0,sessionActive:false})});
 test('account can connect again after local disconnect',()=>{const s={wallet:ADDRESS,chain:61999,sessionActive:true};clearLocalWallet(s);connectLocalWallet(s,ADDRESS,61999);assert.deepEqual(s,{wallet:ADDRESS,chain:61999,sessionActive:true})});
+test('silent restoration checks authorised accounts and chain without prompting',async()=>{const calls=[],provider={request:async({method})=>{calls.push(method);return method==='eth_accounts'?[ADDRESS]:'0xf22f'}},s={wallet:'',chain:0,sessionActive:false};await restoreLocalWallet(s,provider);assert.deepEqual(calls,['eth_accounts','eth_chainId']);assert.deepEqual(s,{wallet:ADDRESS,chain:61999,sessionActive:true})});
+test('silent restoration leaves disconnected route state untouched',async()=>{const calls=[],provider={request:async({method})=>{calls.push(method);return method==='eth_accounts'?[]:'0xf22f'}},s={wallet:'',chain:0,sessionActive:false};await restoreLocalWallet(s,provider);assert.deepEqual(calls,['eth_accounts','eth_chainId']);assert.equal(s.wallet,'')});
