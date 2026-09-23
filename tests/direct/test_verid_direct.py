@@ -306,3 +306,33 @@ def test_github_control_plane_does_not_count_as_independent(direct_vm, direct_de
     assert p["surfaces"][0]["authority"] == "github"
     assert p["surfaces"][1]["authority"] == "github"
     assert p["tier"] == "BASIC"
+
+
+def test_staggered_evidence_age_cannot_elevate_omitted_stale_surface(direct_vm, direct_deploy, direct_alice):
+    c = deploy(direct_deploy)
+    direct_vm.sender = direct_alice
+    c.create_profile("Alice")
+    c.issue_challenge(1, 7 * 24 * 60 * 60)
+    challenge = json.loads(c.get_profile(1))["challenge"]
+    c.register_surface(1, "GITHUB", "https://github.com/alice/staggered")
+    c.register_surface(1, "WEBSITE", "https://alice.example.com/staggered")
+
+    direct_vm.mock_web("github.com/alice/staggered", {"status": 200, "body": "Official GitHub " + challenge})
+    direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
+    c.verify_surface(1, 0)
+
+    _warp_after(direct_vm, 6 * 24 * 60 * 60)
+    direct_vm.clear_mocks()
+    direct_vm.mock_web("alice.example.com/staggered", {"status": 200, "body": "Official website " + challenge})
+    direct_vm.mock_llm(".*", json.dumps({"identity_relation": "MATCH", "authenticity": "FIRST_PARTY", "excerpt": challenge}))
+    c.verify_surface(1, 1)
+
+    _warp_after(direct_vm, 25 * 24 * 60 * 60)
+    c.issue_proof(1, 600)
+    proof = json.loads(c.get_proof(1))
+    stored_types = {x["type"] for x in proof["verified_surfaces"]}
+    assert stored_types == {"WEBSITE"}
+    assert proof["tier"] == "BASIC"
+    assert proof["tier"] != "STRONG"
+    assert len(proof["verified_surfaces"]) == 1
+    assert proof["verified_surfaces"][0]["type"] == "WEBSITE"
